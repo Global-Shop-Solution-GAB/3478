@@ -1,0 +1,445 @@
+Program.Sub.ScreenSU.Start
+gui.SS_Form1..create
+gui.SS_Form1..caption("Select Destination")
+gui.SS_Form1..size(5025,1725)
+gui.SS_Form1..position(0,0)
+gui.SS_Form1..event(unload,Unload)
+gui.SS_Form1..alwaysontop(False)
+gui.SS_Form1..fontname("Arial")
+gui.SS_Form1..fontsize(8)
+gui.SS_Form1..forecolor(0)
+gui.SS_Form1..fontstyle(,,,,)
+gui.SS_Form1..BackColor(-2147483633)
+gui.SS_Form1..controlbox(True)
+gui.SS_Form1..maxbutton(False)
+gui.SS_Form1..minbutton(False)
+gui.SS_Form1..mousepointer(0)
+gui.SS_Form1..moveable(True)
+gui.SS_Form1..sizeable(False)
+gui.SS_Form1..ShowInTaskBar(True)
+gui.SS_Form1..titlebar(True)
+gui.SS_Form1.lbl_txtDest.create(label,"Path",True,1800,200,1,100,135,True,0,Arial,8,-2147483633,0)
+gui.SS_Form1.txtDest.create(textbox,"",True,4230,330,0,100,335,True,0,Arial,8,16777215,1)
+gui.SS_Form1.cmd_txtDest.create(button)
+gui.SS_Form1.cmd_txtDest.caption("^")
+gui.SS_Form1.cmd_txtDest.visible(True)
+gui.SS_Form1.cmd_txtDest.size(330,330)
+gui.SS_Form1.cmd_txtDest.zorder(0)
+gui.SS_Form1.cmd_txtDest.position(4400,335)
+gui.SS_Form1.cmd_txtDest.enabled(True)
+gui.SS_Form1.cmd_txtDest.fontname("Arial")
+gui.SS_Form1.cmd_txtDest.fontsize(8)
+gui.SS_Form1.cmd_txtDest.event(click,cmd_txtdest_click)
+gui.SS_Form1.cmdOk.create(button)
+gui.SS_Form1.cmdOk.caption("Save")
+gui.SS_Form1.cmdOk.visible(True)
+gui.SS_Form1.cmdOk.size(1000,360)
+gui.SS_Form1.cmdOk.zorder(0)
+gui.SS_Form1.cmdOk.position(100,750)
+gui.SS_Form1.cmdOk.enabled(True)
+gui.SS_Form1.cmdOk.fontname("Arial")
+gui.SS_Form1.cmdOk.fontsize(8)
+gui.SS_Form1.cmdOk.event(click,cmdok_click)
+
+
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.Global.sSO.Declare(String)
+Variable.Global.sSuffix.Declare(String)
+Variable.Global.sJob.Declare(String)
+Variable.Global.sRtr.Declare(String)
+Variable.Global.sRunQty.Declare(String)
+Variable.Global.fRunQty.Declare(Float,0)
+Variable.Global.sSubDir.Declare(String)
+Variable.Global.sCopyDoc.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'How this program works:
+'1. User selects folder destination from custom menu item
+'2. User creates sales order (named SO#) folder from SO > Line script 1 button (path designated in step 1)
+'3. User will generate WO from SO, and the WO header screen will populate
+'4. User will click script 1 button on WO header screen to create a subfolder in the SO folder created in (step 2). Subfolder inamedSuffix(ofWO)
+'5.The program will take the Router on the WO screen and look for all docs associated with that router and store the files in the destination path\SO\Suffix
+'5a. If a docs group id = 4, make additional copies of the doc.  The number of copies is determined by the run qty on the WO.  if run qty is 6 then make six copies.
+'6. The program will take the Docs in the SO\Suffix folder and link them to the WO
+'7. After the WIP to FG process, the program will look copy the WO docs to the SO Header screen.
+'8. Constraint - WO# and SO# are the same.  The program will add a zero on the front of the WO to replicate the SO#.
+
+
+'SO > Lines populate hook
+F.Intrinsic.Control.If(V.Caller.Hook,=,12010)
+	V.Passed.000162.Set("SO Folder")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+'WO header populate hook
+F.Intrinsic.Control.If(V.Caller.Hook,=,16630)
+	V.Passed.000091.Set("Subfolder")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.Intrinsic.Control.If(V.Caller.Hook,=,12410)
+'SO > Lines script 1 button
+	F.Intrinsic.String.LPad(V.Passed.000060.Trim,"0",7,V.Global.sSO)
+	F.Intrinsic.Control.CallSub(Create_folder)
+F.Intrinsic.Control.If(V.Caller.Hook,=,16670)
+'WO header
+	V.Global.sJob.Set(V.Passed.000003.Trim)
+	F.Intrinsic.String.Lpad(V.Global.sJob,"0",7,V.Global.sJob)
+	V.Global.sSuffix.Set(V.Passed.000004.Trim)
+	V.Global.sRtr.Set(V.Passed.000006.Trim)
+	V.Global.fRunQty.Set(V.Passed.000043.Trim)
+	F.Intrinsic.Control.CallSub(Create_subfolder)
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,16504)
+'WIP to FG
+	V.Global.sJob.Set(V.Passed.000003.Trim)
+	'V.Global.sJob.Set("000601")
+	F.Intrinsic.String.Lpad(V.Global.sJob,"0",7,V.Global.sJob)
+	V.Global.sSuffix.Set(V.Passed.000004.Trim)
+	'V.Global.sSuffix.Set("004")
+	F.Intrinsic.Control.CallSub(Wotoso)
+F.Intrinsic.Control.Else
+'Path destination
+	Gui.SS_Form1..Show
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(Unload)
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+program.sub.cmd_txtdest_click.start
+'Browser for destination
+F.Intrinsic.Control.SetErrorHandler("cmd_txtdest_click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sRet.Declare(String)
+
+F.Intrinsic.UI.FolderBrowser("Select a destination",V.Local.sRet)
+F.Intrinsic.Control.If(V.Local.sRet,<>,"***CANCEL***")
+	Gui.SS_Form1.txtDest.Text(V.Local.sRet)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmd_txtdest_click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Production_Docs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.cmd_txtdest_click.end
+
+program.sub.cmdok_click.start
+'Select destination to create Sales order folder
+
+F.Intrinsic.Control.SetErrorHandler("cmdok_click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+
+F.Intrinsic.Control.If(V.Screen.SS_Form1!txtDest.Text.TRIM,=,"")
+	F.Intrinsic.UI.Msgbox("Please select a destination.","GAB Error")
+	F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!con.OpenRecordsetRW("rst","Select * From GCG_Production_Docs")
+F.Intrinsic.Control.If(V.ODBC.CON!RST.EOF,=,True)
+	F.ODBC.con!rst.AddNew
+	F.ODBC.con!rst.Set!PATH(V.Screen.SS_Form1!txtDest.Text)
+	F.ODBC.con!rst.Set!DATE(V.Ambient.Now)
+F.Intrinsic.Control.Else
+	F.ODBC.con!rst.Set!PATH(V.Screen.SS_Form1!txtDest.Text)
+	F.ODBC.con!rst.Set!DATE(V.Ambient.Now)
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rst.Update
+F.ODBC.CON!RST.Close
+F.Intrinsic.UI.Msgbox("Save Successful!","GAB Message")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdok_click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Production_Docs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.cmdok_click.end
+
+Program.Sub.create_folder.Start
+'create Sales Order folder to store router docs
+F.Intrinsic.Control.SetErrorHandler("create_folder_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.sPath.Declare(String)
+V.Local.sFolderName.Declare(String)
+V.Local.bFolderExists.Declare(Boolean,False)
+V.Local.sMsg.Declare(String)
+
+F.ODBC.Connection!con.OpenRecordsetRO("rst","Select PATH From GCG_Production_Docs")
+F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,False)
+	V.Local.sPath.Set(V.ODBC.con!rst.FieldValTrim!PATH)
+	F.Intrinsic.String.Concat(V.Local.sPath,"\",V.Global.sSO,V.Local.sFolderName)
+	F.Intrinsic.File.DirExists(V.Local.sFolderName,V.Local.bFolderExists)
+	F.Intrinsic.Control.If(V.Local.bFolderExists,=,False)
+		F.Intrinsic.File.CreateDir(V.Local.sFolderName)
+		F.Intrinsic.String.Concat("Folder ",V.Global.sSO," created.",V.Local.sMsg)
+		F.Intrinsic.UI.Msgbox(V.Local.sMsg,"GAB Message")
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Concat("Folder already exists for Sales Order: ",V.Global.sSO,V.Local.sMsg)
+		F.Intrinsic.UI.Msgbox(V.Local.sMsg,"GAB Error")
+		F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rst.Close
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("create_folder_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Production_Docs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.create_folder.End
+
+Program.Sub.create_subfolder.Start
+'Store router docs in Sales Order folder
+F.Intrinsic.Control.SetErrorHandler("create_subfolder_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sPath.Declare(String)
+V.Local.sFoldername.Declare(String)
+V.Local.bFolderExist.Declare(Boolean,False)
+V.Local.sSubDir.Declare(String)
+V.Local.bSubDir.Declare(Boolean,False)
+V.Local.sMsg.Declare(String)
+V.Local.sRtrdoc.Declare(String)
+V.Local.bRtrdoc.Declare(Boolean,False)
+V.Local.sCopyDoc.Declare(String)
+V.Local.i.Declare(Long)
+V.Local.iCopy.Declare(Long)
+V.Local.sFileName.Declare(String)
+V.Local.sGetFiles.Declare(String)
+V.Local.sWO.Declare(String)
+V.Local.iLinkID.Declare(Long)
+V.Local.iFileNum.Declare(Long)
+V.Local.sFileType.Declare(String)
+
+F.ODBC.Connection!con.OpenRecordsetRO("rst","Select * From GCG_Production_Docs")
+F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,False)
+	V.Local.sPath.Set(V.ODBC.con!rst.FieldValTrim!PATH)
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rst.Close
+
+'Check if SO folder exists
+F.Intrinsic.String.Concat(V.Local.sPath,"\",V.Global.sJob,V.Local.sFoldername)
+F.Intrinsic.File.DirExists(V.Local.sFoldername,V.Local.bFolderExist)
+F.Intrinsic.Control.If(V.Local.bFolderExist,=,False)
+	F.Intrinsic.String.Concat("Subfolder ",V.Global.sSuffix," could not be created because folder ",V.Global.sJob," does not exist.",V.Local.sMsg)
+	F.Intrinsic.UI.Msgbox(V.Local.sMsg,"GAB Message")
+		F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.EndIf
+
+'Check if suffix subfolder exists
+F.Intrinsic.String.Concat(V.Local.sFoldername,"\",V.Global.sSuffix,V.Local.sSubDir)
+F.Intrinsic.File.DirExists(V.Local.sSubDir,V.Local.bSubDir)
+F.Intrinsic.Control.If(V.Local.bSubDir,=,False)
+	F.Intrinsic.File.CreateDir(V.Local.sSubDir)
+F.Intrinsic.Control.EndIf
+
+'check if router docs exist
+F.Global.DocumentControl.GetLinkID(V.Global.sRtr,"00035",V.Local.iLinkID)
+F.Intrinsic.Control.If(V.Local.iLinkID,=,-1)
+	F.Intrinsic.String.Concat("No docs linked to router: ",V.Global.sRtr,V.Local.sMsg)
+	F.Intrinsic.UI.Msgbox(V.Local.sMsg,"GAB Message")
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.EndIf
+
+'Add router docs to SO folder. Check if doc have group id = 4. If so then make copies of doc. Amount of copies = the run qty
+F.Intrinsic.String.Concat("Select * From ATG_DOC_ASSOC where LINK_ID = '",V.Local.iLinkID,"'",V.Local.sSQL)
+F.ODBC.Connection!con.OpenRecordsetRO("rst",V.Local.sSQL)
+F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,False)
+	F.Intrinsic.Control.DoUntil(V.ODBC.con!rst.EOF,=,True)
+		F.Intrinsic.Control.If(V.ODBC.con!rst.FieldValTrim!GRP_ID,=,4)
+			F.Intrinsic.String.Concat(V.ODBC.con!rst.FieldValTrim!PATH,V.ODBC.con!rst.FieldValTrim!FILE,V.Local.sRtrDoc)
+			F.Intrinsic.File.Exists(V.Local.sRtrdoc,V.Local.bRtrdoc)
+			F.Intrinsic.Control.If(V.Local.bRtrdoc,=,True)
+				V.Local.iCopy.Set(1)
+				'V.Global.fRunQty.Set("3")
+				F.Intrinsic.Control.For(V.Local.i,1,V.Global.fRunQty,1)
+					F.Intrinsic.String.Split(V.ODBC.con!rst.FieldValTrim!FILE,".",V.Local.sFileName)
+					F.Intrinsic.String.Concat(V.Local.sSubDir,"\",V.Local.sFileName(0),V.Local.iCopy,".",V.Local.sFileName(1),V.Local.sCopyDoc)
+					F.Intrinsic.File.CopyFile(V.Local.sRtrdoc,V.Local.sCopyDoc)
+					F.Intrinsic.Math.Add(V.Local.iCopy,1,V.Local.iCopy)
+					'upload docs to WO header -  doc control
+					V.Global.sCopyDoc.Set(V.Local.sCopyDoc)
+					F.Intrinsic.String.Concat(V.Local.sSubDir,"\",V.Global.sSubDir)
+					F.Intrinsic.Control.CallSub(Wo_docs,"desc",V.ODBC.con!rst.FieldValTrim!Description,"grpid",V.ODBC.con!rst.FieldValTrim!GRP_ID)
+				F.Intrinsic.Control.Next(V.Local.i)
+			F.Intrinsic.Control.EndIf
+			V.Local.bRtrdoc.Set(False)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Concat(V.ODBC.con!rst.FieldValTrim!PATH,V.ODBC.con!rst.FieldValTrim!FILE,V.Local.sRtrDoc)
+			F.Intrinsic.File.Exists(V.Local.sRtrdoc,V.Local.bRtrdoc)
+			F.Intrinsic.Control.If(V.Local.bRtrdoc,=,True)
+				F.Intrinsic.String.Concat(V.Local.sSubDir,"\",V.ODBC.con!rst.FieldValTrim!FILE,V.Local.sCopyDoc)
+				F.Intrinsic.File.CopyFile(V.Local.sRtrdoc,V.Local.sCopyDoc)
+				'upload docs to WO header -  doc control
+				V.Global.sCopyDoc.Set(V.Local.sCopyDoc)
+				F.Intrinsic.String.Concat(V.Local.sSubDir,"\",V.Global.sSubDir)
+				F.Intrinsic.Control.CallSub(Wo_docs,"desc",V.ODBC.con!rst.FieldValTrim!Description,"grpid",V.ODBC.con!rst.FieldValTrim!GRP_ID)
+			F.Intrinsic.Control.EndIf
+			V.Local.bRtrdoc.Set(False)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.con!rst.MoveNext
+	F.Intrinsic.Control.Loop
+	F.Intrinsic.UI.Msgbox("Docs added successfully.","GAB Message")
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rst.Close
+
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("create_subfolder_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Production_Docs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.create_subfolder.End
+
+Program.Sub.WO_docs.Start
+'Add docs from SO folder to WO header screen
+F.Intrinsic.Control.SetErrorHandler("WO_docs_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.iLinkID.Declare(Long)
+V.Local.sFileType.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sDesc.Declare(String)
+V.Local.sWO.Declare(String)
+V.Local.iGrpID.Declare(String)
+V.Local.sFileName.Declare(String)
+
+V.Local.sDesc.Set(V.Args.desc)
+V.Local.iGrpID.Set(V.Args.grpid)
+
+'create/retrieve link id for WO
+F.Intrinsic.String.Right(V.Global.sJob,6,V.Global.sJob)
+F.Intrinsic.String.Concat(V.Global.sJob,V.Global.sSuffix,V.Local.sWO)
+F.Intrinsic.File.GetFileNameFromFQN(V.Global.sCopyDoc,V.Local.sFileName)
+F.Global.DocumentControl.GetLinkID(V.Local.sWO,00020,V.Local.iLinkID)
+F.Intrinsic.Control.If(V.Local.iLinkID,=,-1)
+	F.Global.DocumentControl.CreateReference(V.Local.sWO,"00020",V.Local.iLinkID)
+F.Intrinsic.Control.EndIf
+
+'get file type
+F.Intrinsic.String.Split(V.Local.sFileName,".",V.Local.sFileType)
+
+'Add docs from SO folder to WO header screen
+F.Global.DocumentControl.AddDocument(V.Local.iLinkID,V.Global.sCopyDoc,V.Local.sDesc,V.Local.iGrpID,V.Local.sFileType(1))
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("WO_docs_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Production_Docs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.WO_docs.End
+
+Program.Sub.WOtoSO.Start
+'WIP to FG - copy Work Order docs to Sales Order header screen
+V.Local.sPath.Declare(String)
+V.Local.sFoldername.Declare(String)
+V.Local.bFolderExist.Declare(Boolean,False)
+V.Local.sWO.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.iLinkID.Declare(Long)
+V.Local.sJob.Declare(String)
+V.Local.iCopyLinkID.Declare(Long)
+V.Local.bLinkID.Declare(Boolean,False)
+
+F.ODBC.Connection!con.OpenRecordsetRO("rst","Select * From GCG_Production_Docs")
+F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,False)
+	V.Local.sPath.Set(V.ODBC.con!rst.FieldValTrim!PATH)
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rst.Close
+'Check if folder containing docs exist
+F.Intrinsic.String.Concat(V.Local.sPath,"\",V.Global.sJob,"\",V.Global.sSuffix,"\",V.Local.sFoldername)
+F.Intrinsic.File.DirExists(V.Local.sFoldername,V.Local.bFolderExist)
+F.Intrinsic.Control.If(V.Local.bFolderExist,=,False)
+	F.Intrinsic.UI.Msgbox("Sales Order folder does not exist.","GAB Message")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+'Check if WO docs exist
+F.Intrinsic.String.Right(V.Global.sJob,6,V.Local.sJob)
+F.Intrinsic.String.Concat(V.Local.sJob,V.Global.sSuffix,V.Local.sWO)
+F.Global.DocumentControl.GetLinkID(V.Local.sWO,00020,V.Local.iCopyLinkID)
+F.Intrinsic.Control.If(V.Local.iCopyLinkID,=,"-1")
+	F.Intrinsic.UI.Msgbox("No docs tied to Work Order.","GAB Message")
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.EndIf
+
+'create/find SO Link ID
+F.Global.DocumentControl.GetLinkID(V.Global.sJob,00045,V.Local.iLinkID)
+F.Intrinsic.Control.If(V.Local.iLinkID,=,-1)
+	F.Global.DocumentControl.CreateReference(V.Global.sJob,"00045",V.Local.iLinkID)
+F.Intrinsic.Control.EndIf
+
+'Copy WO docs to SO
+F.Global.DocumentControl.Copy(V.Local.iCopyLinkID,V.Local.iLinkID,V.Local.bLinkID)
+F.Intrinsic.Control.If(V.Local.bLinkID,=,False)
+	F.Intrinsic.UI.Msgbox("WO docs were not transferred to Sales Order. Please contact Global Shop.","GAB Error")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(Unload)
+
+Program.Sub.WOtoSO.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_Production_Docs$}$ERIC$}$7/16/2012
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Quote 3495
+Program.Sub.Comments.End
+Program.Sub.ScreenSS.Start
+SS_Form1{{CAPTION::Select Destination
+SS_Form1.CTRL{{NAME::txtDest\\TYPE::2\\CAPTION::Path\\GROUP::-1\\BROWSER::1\\SIZE::1
+SS_Form1.CTRL{{NAME::cmdOk\\TYPE::5\\CAPTION::Ok\\GROUP::-1\\BROWSER::0\\SIZE::1
+
+Program.Sub.ScreenSS.End
+
